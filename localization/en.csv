@@ -1,0 +1,10 @@
+keys,en
+ui.game.title,Epochs of Humanity
+ui.game.subtitle,A grand strategy across deep time
+ui.menu.new_game,New Game
+ui.menu.load_game,Load Game
+ui.menu.settings,Settings
+ui.menu.credits,Credits
+ui.menu.quit,Quit
+ui.menu.coming_soon,Coming soon
+ui.version_label,v{version} — pre-alpha

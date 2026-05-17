@@ -1,0 +1,10 @@
+keys,ru
+ui.game.title,Эпохи Человечества
+ui.game.subtitle,Гранд-стратегия сквозь глубокое время
+ui.menu.new_game,Новая игра
+ui.menu.load_game,Загрузить
+ui.menu.settings,Настройки
+ui.menu.credits,Авторы
+ui.menu.quit,Выход
+ui.menu.coming_soon,Скоро
+ui.version_label,v{version} — pre-alpha
