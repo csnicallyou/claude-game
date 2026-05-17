@@ -6,15 +6,16 @@ namespace EpochsOfHumanity.Sim.Characters;
 /// A tribe — a coherent social group living at a home hex on the strategic map.
 /// </summary>
 /// <remarks>
-/// Pure data, no behaviour. In v0.1 tribes are static markers; from v0.2 they
-/// gain population (Pop component), AI, migration, diplomacy etc.
+/// Pure data, no behaviour. V0.1 tribes are static markers; from v0.2 they
+/// gain population (Pop component), AI, migration, diplomacy.
 ///
-/// <c>Name</c> uses Latin-transliterated archaeological/place-based naming per
-/// CLAUDE.md §7 — not translated across locales.
+/// <c>Name</c> uses Latin-transliterated archaeological/place-based naming
+/// (CLAUDE.md §7) — not translated across locales.
 /// </remarks>
 public sealed record Tribe(
     string Id,
-    string Name,             // "Sons of Carmel", "Neandertal of Kebara" — latin, untranslated
+    string Name,
     Species Species,
     HexCoord HomeHex,
+    Chief Chief,
     bool IsPlayerControlled = false);

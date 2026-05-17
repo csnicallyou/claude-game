@@ -1,9 +1,21 @@
-[gd_scene load_steps=5 format=3 uid="uid://b1k8mapscreen0001"]
+[gd_scene load_steps=6 format=3 uid="uid://b1k8mapscreen0001"]
 
 [ext_resource type="Script" path="res://render/map/MapScreen.cs" id="1_map"]
 [ext_resource type="Script" path="res://render/map/HexMapRenderer.cs" id="2_renderer"]
 [ext_resource type="Script" path="res://render/map/LandmarkLabels.cs" id="3_landmarks"]
 [ext_resource type="Script" path="res://render/map/RiverRenderer.cs" id="4_rivers"]
+[ext_resource type="Shader" path="res://assets/shaders/parchment-overlay.gdshader" id="5_parchment"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_parchment"]
+shader = ExtResource("5_parchment")
+shader_parameter/grain_strength = 0.07
+shader_parameter/vignette_strength = 0.45
+shader_parameter/vignette_inner = 0.35
+shader_parameter/vignette_outer = 0.85
+shader_parameter/vignette_tint = Color(0.08, 0.05, 0.03, 1)
+shader_parameter/paper_tint = Color(0.97, 0.91, 0.78, 1)
+shader_parameter/paper_strength = 0.15
+shader_parameter/grain_scale = 1500.0
 
 [node name="MapScreen" type="Node2D"]
 script = ExtResource("1_map")
@@ -35,7 +47,20 @@ unique_name_in_owner = true
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 
+[node name="OverlayLayer" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="ParchmentOverlay" type="ColorRect" parent="OverlayLayer"]
+material = SubResource("ShaderMaterial_parchment")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
 [node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
 
 [node name="StatusBar" type="Panel" parent="HUD"]
 anchors_preset = 12

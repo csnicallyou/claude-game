@@ -255,7 +255,11 @@ public partial class MapScreen : Node2D
                     : tribe.Species == Species.Neanderthal ? "Neanderthal"
                     : "Denisovan";
                 var marker = tribe.IsPlayerControlled ? " ★" : "";
-                _statusLabel.Text = $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  biome: {tile.BiomeId}";
+                var sex = tribe.Chief.Sex == Sex.Male ? "♂" : "♀";
+                _statusLabel.Text =
+                    $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  " +
+                    $"chief {tribe.Chief.Name} {sex} {tribe.Chief.AgeWinters} winters  |  " +
+                    $"biome: {tile.BiomeId}";
             }
             else
             {

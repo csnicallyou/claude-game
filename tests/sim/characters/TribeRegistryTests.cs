@@ -50,12 +50,25 @@ public class TribeRegistryTests
     [Fact]
     public void Duplicate_HomeHex_Throws()
     {
+        var chief = new Chief("Test", Sex.Male, 30);
         var dup = new[]
         {
-            new Tribe("a", "A", Species.Sapiens, new HexCoord(0, 0)),
-            new Tribe("b", "B", Species.Sapiens, new HexCoord(0, 0)),
+            new Tribe("a", "A", Species.Sapiens, new HexCoord(0, 0), chief),
+            new Tribe("b", "B", Species.Sapiens, new HexCoord(0, 0), chief),
         };
         Assert.Throws<System.ArgumentException>(() => new TribeRegistry(dup));
+    }
+
+    [Fact]
+    public void AllTribes_HaveChief_WithValidAge()
+    {
+        var registry = LevantTribesPreset.Build();
+        foreach (var tribe in registry.All)
+        {
+            Assert.False(string.IsNullOrEmpty(tribe.Chief.Name),
+                $"Tribe '{tribe.Id}' has chief with empty name");
+            Assert.InRange(tribe.Chief.AgeWinters, 15, 70);
+        }
     }
 
     [Fact]
