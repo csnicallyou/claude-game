@@ -20,6 +20,11 @@ namespace EpochsOfHumanity.Render.Map;
 /// </remarks>
 public partial class MapScreen : Node2D
 {
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     [Export] public float PanSpeed { get; set; } = 1.0f;
     [Export] public float MinZoom { get; set; } = 0.25f;
     [Export] public float MaxZoom { get; set; } = 4.0f;
@@ -62,10 +67,8 @@ public partial class MapScreen : Node2D
             FileAccess.FileExists("res://assets/palettes/paleolithic-base.json")
                 ? "res://assets/palettes/paleolithic-base.json"
                 : palettePath);
-        var paletteDto = JsonSerializer.Deserialize<PaletteDto>(paletteJson, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-        }) ?? throw new System.IO.InvalidDataException("Palette JSON empty");
+        var paletteDto = JsonSerializer.Deserialize<PaletteDto>(paletteJson, JsonOpts)
+            ?? throw new System.IO.InvalidDataException("Palette JSON empty");
         var palette = new PaletteRegistry(paletteDto.Id, paletteDto.Colors);
 
         // 2. Load biomes (all *.json in data/biomes/)
@@ -105,12 +108,11 @@ public partial class MapScreen : Node2D
 
         files.Sort(System.StringComparer.Ordinal); // determinism (Law 1)
 
-        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         foreach (var file in files)
         {
             var path = $"res://data/biomes/{file}";
             var json = FileAccess.GetFileAsString(path);
-            var biome = JsonSerializer.Deserialize<Biome>(json, jsonOpts)
+            var biome = JsonSerializer.Deserialize<Biome>(json, JsonOpts)
                 ?? throw new System.IO.InvalidDataException($"Empty biome JSON: {file}");
             biomes.Add(biome);
         }
