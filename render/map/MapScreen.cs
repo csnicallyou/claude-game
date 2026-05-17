@@ -1,9 +1,11 @@
 using Godot;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text.Json;
 using EpochsOfHumanity.Core.Geography;
 using EpochsOfHumanity.Core.Visual;
 using EpochsOfHumanity.Sim.Biomes;
+using EpochsOfHumanity.Sim.Characters;
 using EpochsOfHumanity.Sim.Geography;
 using GodotVector2 = Godot.Vector2;
 using NumericsVector2 = System.Numerics.Vector2;
@@ -32,10 +34,12 @@ public partial class MapScreen : Node2D
 
     private Camera2D? _camera;
     private HexMapRenderer? _renderer;
+    private RiverRenderer? _riverRenderer;
     private LandmarkLabels? _landmarks;
-    private SettlementMarker? _playerSettlement;
+    private Node2D? _tribesLayer;
     private Label? _statusLabel;
     private HexMap? _map;
+    private TribeRegistry? _tribes;
     private PaletteRegistry? _palette;
     private HexLayout _layout = HexLayout.Default;
 
@@ -47,8 +51,9 @@ public partial class MapScreen : Node2D
     {
         _camera = GetNode<Camera2D>("%Camera");
         _renderer = GetNode<HexMapRenderer>("%HexMapRenderer");
+        _riverRenderer = GetNode<RiverRenderer>("%RiverRenderer");
         _landmarks = GetNode<LandmarkLabels>("%LandmarkLabels");
-        _playerSettlement = GetNode<SettlementMarker>("%PlayerSettlement");
+        _tribesLayer = GetNode<Node2D>("%TribesLayer");
         _statusLabel = GetNode<Label>("%StatusLabel");
 
         try
@@ -86,21 +91,20 @@ public partial class MapScreen : Node2D
         // 4. Render hexes + pictograms
         _renderer!.Initialize(_map, biomeRegistry, _palette, _layout);
 
-        // 5. Landmark labels overlay
+        // 5. Rivers
+        _riverRenderer?.Initialize(LevantRivers.All(), _layout, _palette);
+
+        // 6. Landmark labels overlay
         _landmarks?.Initialize(_layout);
 
-        // 6. Player settlement marker at starting hex
-        if (_playerSettlement != null)
-        {
-            var startWorld = _layout.HexToPixel(LevantPreset.StartingHex);
-            _playerSettlement.Position = new GodotVector2(startWorld.X, startWorld.Y);
-            _playerSettlement.Configure("Sons of Carmel", _palette);
-        }
+        // 7. Tribes (player + NPC)
+        _tribes = LevantTribesPreset.Build();
+        RenderTribes();
 
-        // 7. Status text
-        var bounds = _map.Bounds();
+        // 8. Status text
+        var playerTribe = _tribes.Player;
         if (_statusLabel != null)
-            _statusLabel.Text = $"Levant — {_map.Count} hexes  |  Your tribe: Sons of Carmel at Mt. Carmel  |  45,000 BP";
+            _statusLabel.Text = $"Levant — {_map.Count} hexes  |  Your tribe: {playerTribe.Name} (Mt. Carmel)  |  {_tribes.Count - 1} neighbouring tribes  |  45,000 BP";
     }
 
     private static System.Collections.Generic.List<Biome> LoadBiomes()
@@ -141,6 +145,24 @@ public partial class MapScreen : Node2D
         var startWorld = _layout.HexToPixel(LevantPreset.StartingHex);
         _camera.Position = new GodotVector2(startWorld.X, startWorld.Y);
         _camera.Zoom = new GodotVector2(2.0f, 2.0f); // zoomed in a bit
+    }
+
+    private void RenderTribes()
+    {
+        if (_tribesLayer == null || _tribes == null || _palette == null) return;
+        foreach (var c in _tribesLayer.GetChildren()) c.QueueFree();
+
+        foreach (var tribe in _tribes.All)
+        {
+            var pos = _layout.HexToPixel(tribe.HomeHex);
+            var marker = new SettlementMarker
+            {
+                Name = $"Tribe_{tribe.Id}",
+                Position = new GodotVector2(pos.X, pos.Y),
+            };
+            _tribesLayer.AddChild(marker);
+            marker.Configure(tribe.Name, tribe.Species, tribe.IsPlayerControlled, _palette);
+        }
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -226,8 +248,20 @@ public partial class MapScreen : Node2D
 
         if (_map.TryGet(coord, out var tile))
         {
-            _statusLabel.Text = $"Hex {coord} — biome: {tile.BiomeId}";
-            GD.Print($"Clicked hex {coord}: {tile.BiomeId}");
+            var tribe = _tribes?.AtHex(coord);
+            if (tribe != null)
+            {
+                var speciesLabel = tribe.Species == Species.Sapiens ? "Sapiens"
+                    : tribe.Species == Species.Neanderthal ? "Neanderthal"
+                    : "Denisovan";
+                var marker = tribe.IsPlayerControlled ? " ★" : "";
+                _statusLabel.Text = $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  biome: {tile.BiomeId}";
+            }
+            else
+            {
+                _statusLabel.Text = $"Hex {coord} — biome: {tile.BiomeId}";
+            }
+            GD.Print($"Clicked hex {coord}: {tile.BiomeId}, tribe={tribe?.Name ?? "none"}");
         }
         else
         {
