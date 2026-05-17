@@ -32,8 +32,11 @@ public partial class MapScreen : Node2D
 
     private Camera2D? _camera;
     private HexMapRenderer? _renderer;
+    private LandmarkLabels? _landmarks;
+    private SettlementMarker? _playerSettlement;
     private Label? _statusLabel;
     private HexMap? _map;
+    private PaletteRegistry? _palette;
     private HexLayout _layout = HexLayout.Default;
 
     private bool _isPanning;
@@ -44,6 +47,8 @@ public partial class MapScreen : Node2D
     {
         _camera = GetNode<Camera2D>("%Camera");
         _renderer = GetNode<HexMapRenderer>("%HexMapRenderer");
+        _landmarks = GetNode<LandmarkLabels>("%LandmarkLabels");
+        _playerSettlement = GetNode<SettlementMarker>("%PlayerSettlement");
         _statusLabel = GetNode<Label>("%StatusLabel");
 
         try
@@ -69,7 +74,7 @@ public partial class MapScreen : Node2D
                 : palettePath);
         var paletteDto = JsonSerializer.Deserialize<PaletteDto>(paletteJson, JsonOpts)
             ?? throw new System.IO.InvalidDataException("Palette JSON empty");
-        var palette = new PaletteRegistry(paletteDto.Id, paletteDto.Colors);
+        _palette = new PaletteRegistry(paletteDto.Id, paletteDto.Colors);
 
         // 2. Load biomes (all *.json in data/biomes/)
         var biomes = LoadBiomes();
@@ -78,13 +83,24 @@ public partial class MapScreen : Node2D
         // 3. Generate Levant map
         _map = LevantPreset.Build();
 
-        // 4. Render
-        _renderer!.Initialize(_map, biomeRegistry, palette, _layout);
+        // 4. Render hexes + pictograms
+        _renderer!.Initialize(_map, biomeRegistry, _palette, _layout);
 
-        // 5. Status text
+        // 5. Landmark labels overlay
+        _landmarks?.Initialize(_layout);
+
+        // 6. Player settlement marker at starting hex
+        if (_playerSettlement != null)
+        {
+            var startWorld = _layout.HexToPixel(LevantPreset.StartingHex);
+            _playerSettlement.Position = new GodotVector2(startWorld.X, startWorld.Y);
+            _playerSettlement.Configure("Sons of Carmel", _palette);
+        }
+
+        // 7. Status text
         var bounds = _map.Bounds();
         if (_statusLabel != null)
-            _statusLabel.Text = $"Levant — {_map.Count} hexes  |  bounds q=[{bounds.MinQ}..{bounds.MaxQ}] r=[{bounds.MinR}..{bounds.MaxR}]";
+            _statusLabel.Text = $"Levant — {_map.Count} hexes  |  Your tribe: Sons of Carmel at Mt. Carmel  |  45,000 BP";
     }
 
     private static System.Collections.Generic.List<Biome> LoadBiomes()

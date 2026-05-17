@@ -1,6 +1,7 @@
 using Godot;
 using System.Numerics;
 using EpochsOfHumanity.Core.Geography;
+using EpochsOfHumanity.Core.Prng;
 using EpochsOfHumanity.Core.Visual;
 using EpochsOfHumanity.Sim.Biomes;
 using EpochsOfHumanity.Sim.Geography;
@@ -10,13 +11,16 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace EpochsOfHumanity.Render.Map;
 
 /// <summary>
-/// Renders a <see cref="HexMap"/> as Godot <see cref="Polygon2D"/> children.
-/// One polygon per hex. For v0.1 (~250 hexes) this is fine perf-wise;
-/// in v0.3+ we may switch to <see cref="MultiMeshInstance2D"/> for thousands of tiles.
+/// Renders a <see cref="HexMap"/> as Godot <see cref="Polygon2D"/> children,
+/// plus deterministic biome pictograms on each tile.
 /// </summary>
 /// <remarks>
-/// This is render-layer code, <c>using Godot</c> is allowed. Reads <c>HexMap</c>
-/// and <c>BiomeRegistry</c>, never writes to sim state (Law 2).
+/// One Polygon2D per hex (fill), one Line2D child (border), 0..N PictogramNode
+/// children per hex (decorations). For v0.1 (~200 hexes × few pictograms each)
+/// this is fine perf-wise.
+///
+/// Pictogram placement is deterministic: seeded by hex coord + biome id, so the
+/// same map always shows the same decorations (Law 1).
 /// </remarks>
 public partial class HexMapRenderer : Node2D
 {
@@ -44,7 +48,6 @@ public partial class HexMapRenderer : Node2D
     {
         if (_map is null || _biomes is null || _palette is null) return;
 
-        // Clear any previous children
         foreach (var child in GetChildren())
             child.QueueFree();
 
@@ -59,7 +62,6 @@ public partial class HexMapRenderer : Node2D
             var biome = _biomes.Get(tile.BiomeId);
             var baseColor = ToGodotColor(_palette[biome.BaseColor]);
 
-            // Polygon2D for fill
             var poly = new Polygon2D
             {
                 Name = $"Hex_{tile.Coord.Q}_{tile.Coord.R}",
@@ -69,7 +71,7 @@ public partial class HexMapRenderer : Node2D
             };
             AddChild(poly);
 
-            // Thin outline as child Line2D
+            // Border outline
             if (BorderWidth > 0f)
             {
                 var line = new Line2D
@@ -83,6 +85,43 @@ public partial class HexMapRenderer : Node2D
                     line.AddPoint(c);
                 poly.AddChild(line);
             }
+
+            // Deterministic pictograms based on biome config
+            AddPictograms(poly, tile, biome);
+        }
+    }
+
+    private void AddPictograms(Polygon2D hexNode, HexTile tile, Biome biome)
+    {
+        if (_palette is null) return;
+
+        // Per-hex PRNG: deterministic from coord + biome id
+        var rng = new Rng($"hex-pictograms-{tile.Coord.Q}-{tile.Coord.R}-{tile.BiomeId}");
+
+        var maxPictogramsPerHex = 4;
+        var placed = 0;
+
+        foreach (var pg in biome.Pictograms)
+        {
+            if (placed >= maxPictogramsPerHex) break;
+            if (!rng.Chance(pg.Weight)) continue;
+
+            // Random offset within hex (stay inside the inscribed circle)
+            var size = _layout.Size;
+            var maxR = size * 0.55;
+            var angle = rng.NextDouble() * System.Math.PI * 2.0;
+            var radius = rng.NextDouble() * maxR;
+            var ox = System.Math.Cos(angle) * radius;
+            var oy = System.Math.Sin(angle) * radius;
+
+            var node = new PictogramNode
+            {
+                Name = $"pg_{placed}_{pg.Key}",
+                Position = new GodotVector2((float)ox, (float)oy),
+            };
+            hexNode.AddChild(node);
+            node.Configure(pg.Key, _palette);
+            placed++;
         }
     }
 
