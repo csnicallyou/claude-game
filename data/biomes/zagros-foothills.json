@@ -1,0 +1,14 @@
+{
+  "id": "zagros-foothills",
+  "nameKey": "biome.zagros_foothills.name",
+  "baseColor": "flint-grey",
+  "patternColors": ["moss-green", "dry-grass", "charcoal"],
+  "pictograms": [
+    { "key": "tree-oak", "weight": 0.2 },
+    { "key": "rock-large", "weight": 0.15 },
+    { "key": "cave-entrance", "weight": 0.05 }
+  ],
+  "habitability": 0.6,
+  "huntingDensity": 0.55,
+  "productivity": 0.5
+}

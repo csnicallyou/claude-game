@@ -16,5 +16,6 @@
   <ItemGroup>
     <!-- Reference the main C# sources directly (game code lives at solution root, not in a separate csproj at this stage) -->
     <Compile Include="..\core\**\*.cs" LinkBase="core\" />
+    <Compile Include="..\sim\**\*.cs" LinkBase="sim\" />
   </ItemGroup>
 </Project>

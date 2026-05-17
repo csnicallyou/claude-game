@@ -1,0 +1,13 @@
+{
+  "id": "negev-arid",
+  "nameKey": "biome.negev_arid.name",
+  "baseColor": "dry-grass",
+  "patternColors": ["ochre-light", "flint-grey"],
+  "pictograms": [
+    { "key": "acacia-tree", "weight": 0.08 },
+    { "key": "wadi-rock", "weight": 0.12 }
+  ],
+  "habitability": 0.4,
+  "huntingDensity": 0.35,
+  "productivity": 0.3
+}

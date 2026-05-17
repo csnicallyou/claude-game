@@ -1,0 +1,15 @@
+{
+  "id": "carmel-foothills",
+  "nameKey": "biome.carmel_foothills.name",
+  "baseColor": "moss-green",
+  "patternColors": ["spring-green", "dry-grass", "flint-grey"],
+  "pictograms": [
+    { "key": "tree-oak", "weight": 0.35 },
+    { "key": "tree-pistachio", "weight": 0.15 },
+    { "key": "rock-small", "weight": 0.1 },
+    { "key": "cave-entrance", "weight": 0.03 }
+  ],
+  "habitability": 0.85,
+  "huntingDensity": 0.65,
+  "productivity": 0.7
+}

@@ -1,0 +1,13 @@
+{
+  "id": "sinai-desert",
+  "nameKey": "biome.sinai_desert.name",
+  "baseColor": "ochre-light",
+  "patternColors": ["ochre-dark", "dry-grass", "bone-cream"],
+  "pictograms": [
+    { "key": "boulder", "weight": 0.12 },
+    { "key": "sparse-shrub", "weight": 0.08 }
+  ],
+  "habitability": 0.25,
+  "huntingDensity": 0.2,
+  "productivity": 0.15
+}

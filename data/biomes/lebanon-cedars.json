@@ -1,0 +1,13 @@
+{
+  "id": "lebanon-cedars",
+  "nameKey": "biome.lebanon_cedars.name",
+  "baseColor": "moss-green",
+  "patternColors": ["charcoal", "flint-grey"],
+  "pictograms": [
+    { "key": "tree-cedar", "weight": 0.45 },
+    { "key": "rock-large", "weight": 0.08 }
+  ],
+  "habitability": 0.55,
+  "huntingDensity": 0.5,
+  "productivity": 0.55
+}

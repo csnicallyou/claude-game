@@ -1,0 +1,14 @@
+{
+  "id": "jordan-valley",
+  "nameKey": "biome.jordan_valley.name",
+  "baseColor": "spring-green",
+  "patternColors": ["moss-green", "river-blue", "ochre-light"],
+  "pictograms": [
+    { "key": "reed-cluster", "weight": 0.25 },
+    { "key": "papyrus", "weight": 0.18 },
+    { "key": "fishing-bird", "weight": 0.05 }
+  ],
+  "habitability": 0.7,
+  "huntingDensity": 0.6,
+  "productivity": 0.85
+}

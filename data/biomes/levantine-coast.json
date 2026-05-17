@@ -1,0 +1,13 @@
+{
+  "id": "levantine-coast",
+  "nameKey": "biome.levantine_coast.name",
+  "baseColor": "ochre-light",
+  "patternColors": ["bone-cream", "river-blue"],
+  "pictograms": [
+    { "key": "shell-cluster", "weight": 0.15 },
+    { "key": "driftwood", "weight": 0.08 }
+  ],
+  "habitability": 0.75,
+  "huntingDensity": 0.55,
+  "productivity": 0.7
+}
