@@ -1,0 +1,66 @@
+# Godot 4+ specific
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (built-in)
+*.translation
+
+# Mono / .NET
+.mono/
+data_*/
+mono_crash.*.json
+
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userprefs
+*.suo
+*.cache
+*.docstates
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+*.snupkg
+
+# .NET / NuGet
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-specific
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Godot export
+build/
+dist/
+release/
+
+# Saves (locally generated, never committed)
+saves/
+
+# Local Claude settings (project-level user overrides)
+.claude/settings.local.json
+
+# Local environment overrides
+.env
+.env.local

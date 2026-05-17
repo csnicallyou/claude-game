@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Background: charcoal (paleolithic cave) -->
+  <rect width="128" height="128" fill="#1F1A14"/>
+  <!-- Stylized hand-print in ochre (palaeolithic art reference, Chauvet/Cosquer style) -->
+  <g fill="#D9A066" transform="translate(64 78)">
+    <!-- palm -->
+    <ellipse cx="0" cy="0" rx="22" ry="20"/>
+    <!-- fingers -->
+    <rect x="-18" y="-32" width="6" height="20" rx="3"/>
+    <rect x="-9"  y="-38" width="6" height="26" rx="3"/>
+    <rect x="0"   y="-40" width="6" height="28" rx="3"/>
+    <rect x="9"   y="-36" width="6" height="24" rx="3"/>
+    <!-- thumb -->
+    <rect x="14"  y="-14" width="6" height="14" rx="3" transform="rotate(30 17 -7)"/>
+  </g>
+  <!-- spirit dots in fire-yellow (animism reference) -->
+  <circle cx="22" cy="22" r="2" fill="#E8A93C"/>
+  <circle cx="108" cy="34" r="2" fill="#E8A93C"/>
+  <circle cx="18" cy="98" r="2" fill="#E8A93C"/>
+  <circle cx="110" cy="106" r="2" fill="#E8A93C"/>
+</svg>
