@@ -55,7 +55,6 @@ layout_mode = 2
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-disabled = true
 text = "ui.menu.new_game"
 
 [node name="LoadGameButton" type="Button" parent="CenterContainer/VBox"]

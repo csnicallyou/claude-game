@@ -36,8 +36,7 @@ public partial class MainMenu : Control
 
     private void OnNewGamePressed()
     {
-        // TODO v0.1: navigate to MapScreen
-        GD.Print("New Game pressed — not yet implemented.");
+        GetTree().ChangeSceneToFile("res://scenes/MapScreen.tscn");
     }
 
     private void OnLoadGamePressed()
