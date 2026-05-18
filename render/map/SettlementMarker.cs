@@ -24,16 +24,27 @@ public partial class SettlementMarker : Node2D
     private string _label = "";
     private Species _species = Species.Sapiens;
     private bool _isPlayer;
+    private int _pop;
     private Label? _labelNode;
+    private Label? _popLabelNode;
 
-    public void Configure(string label, Species species, bool isPlayer, PaletteRegistry palette)
+    public void Configure(string label, Species species, bool isPlayer, int pop, PaletteRegistry palette)
     {
         _label = label;
         _species = species;
         _isPlayer = isPlayer;
+        _pop = pop;
         _palette = palette;
         QueueRedraw();
         BuildLabel();
+        BuildPopLabel();
+    }
+
+    /// <summary>Update only the population display, without re-drawing the marker.</summary>
+    public void UpdatePop(int newPop)
+    {
+        _pop = newPop;
+        if (_popLabelNode != null) _popLabelNode.Text = FormatPopText(newPop);
     }
 
     public override void _Draw()
@@ -156,6 +167,31 @@ public partial class SettlementMarker : Node2D
             _labelNode.Text = _label;
         }
     }
+
+    private void BuildPopLabel()
+    {
+        if (_popLabelNode is null)
+        {
+            _popLabelNode = new Label
+            {
+                Name = "Pop",
+                Text = FormatPopText(_pop),
+                Position = new GodotVector2(-60, 26),
+                Size = new GodotVector2(120, 14),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Modulate = new Color(0.85f, 0.79f, 0.69f, _isPlayer ? 0.95f : 0.75f),
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            _popLabelNode.AddThemeFontSizeOverride("font_size", 9);
+            AddChild(_popLabelNode);
+        }
+        else
+        {
+            _popLabelNode.Text = FormatPopText(_pop);
+        }
+    }
+
+    private static string FormatPopText(int pop) => $"~{pop} souls";
 
     private static Color ToColor(ColorRgba c) => new(c.R, c.G, c.B, c.A);
 }

@@ -147,14 +147,20 @@ public class SaveStoreTests
     [Fact]
     public void RoundTrip_PreservesState_AcrossSeasons()
     {
-        var original = new GameState("roundtrip-seed", LevantTribesPreset.Build());
+        var initial = LevantTribesPreset.Build();
+        var prod = MakeUniformProductivity(initial, 0.5);
+
+        var original = new GameState("roundtrip-seed", initial, prod);
         for (var i = 0; i < 25; i++) original.AdvanceYear();
-        original.AdvanceSeason(); // also test mid-year save (Summer of year 26)
+        original.AdvanceSeason();
 
         var snapshot = SaveStore.ToSnapshot(original, "test-save");
         var bytes = SaveSerializer.Serialize(snapshot);
         var restored = SaveSerializer.Deserialize(bytes);
-        var rebuilt = SaveStore.FromSnapshot(restored, LevantTribesPreset.Build());
+
+        var freshTribes = LevantTribesPreset.Build();
+        var freshProd = MakeUniformProductivity(freshTribes, 0.5);
+        var rebuilt = SaveStore.FromSnapshot(restored, freshTribes, freshProd);
 
         Assert.Equal(original.SeasonsElapsed, rebuilt.SeasonsElapsed);
         Assert.Equal(original.YearsElapsed, rebuilt.YearsElapsed);
@@ -167,7 +173,19 @@ public class SaveStoreTests
             Assert.Equal(chief.AgeWinters, rebuiltChief.AgeWinters);
             Assert.Equal(chief.Sex, rebuiltChief.Sex);
         }
+        foreach (var (id, pop) in original.Pops)
+        {
+            Assert.Equal(pop, rebuilt.PopOf(id));
+        }
         Assert.Equal(original.AllEvents.Count, rebuilt.AllEvents.Count);
+    }
+
+    private static System.Collections.Generic.Dictionary<string, double> MakeUniformProductivity(
+        TribeRegistry tribes, double value)
+    {
+        var d = new System.Collections.Generic.Dictionary<string, double>(System.StringComparer.Ordinal);
+        foreach (var t in tribes.All) d[t.Id] = value;
+        return d;
     }
 
     [Fact]
@@ -179,9 +197,100 @@ public class SaveStoreTests
         var bytes = SaveSerializer.Serialize(snapshot);
         Assert.True(bytes.Length > 100);
         Assert.True(bytes.Length < 50_000, $"Save too large: {bytes.Length} bytes");
-        // gzip magic: 0x1f, 0x8b
         Assert.Equal(0x1f, bytes[0]);
         Assert.Equal(0x8b, bytes[1]);
+    }
+}
+
+public class PopulationSystemTests
+{
+    [Fact]
+    public void FreshState_HasInitialPops_AllAboveFloor()
+    {
+        var state = new GameState("pops-init-seed", LevantTribesPreset.Build());
+        foreach (var (_, pop) in state.Pops)
+        {
+            Assert.True(pop >= EpochsOfHumanity.Sim.Pops.PopulationSystem.FloorPop,
+                $"Initial pop {pop} below floor");
+        }
+    }
+
+    [Fact]
+    public void InitialPop_SapiensLargerThan_Neanderthal_OnAverage()
+    {
+        // Run with many seeds and average — Sapiens band sizes are larger by design.
+        var sapTotal = 0;
+        var neaTotal = 0;
+        for (var s = 0; s < 40; s++)
+        {
+            var state = new GameState($"avg-{s}", LevantTribesPreset.Build());
+            sapTotal += state.PopOf("sons-of-carmel");
+            neaTotal += state.PopOf("neandertal-of-kebara");
+        }
+        var sapAvg = sapTotal / 40.0;
+        var neaAvg = neaTotal / 40.0;
+        Assert.True(sapAvg > neaAvg,
+            $"Sapiens band ({sapAvg:F1}) should average larger than Neanderthal ({neaAvg:F1})");
+    }
+
+    [Fact]
+    public void AdvanceYear_ChangesPops_Deterministically()
+    {
+        var prod = new System.Collections.Generic.Dictionary<string, double>(System.StringComparer.Ordinal)
+        {
+            ["sons-of-carmel"] = 0.7, ["children-of-hula"] = 0.85, ["folk-of-bekaa"] = 0.55,
+            ["hunters-of-negev"] = 0.30, ["neandertal-of-kebara"] = 0.7, ["neandertal-of-amud"] = 0.85,
+        };
+
+        var a = new GameState("popseed", LevantTribesPreset.Build(), prod);
+        var b = new GameState("popseed", LevantTribesPreset.Build(), prod);
+        for (var i = 0; i < 50; i++) { a.AdvanceYear(); b.AdvanceYear(); }
+
+        foreach (var (id, popA) in a.Pops)
+        {
+            Assert.Equal(popA, b.PopOf(id));
+        }
+    }
+
+    [Fact]
+    public void HighProductivity_GrowsPop_LowProductivity_ShrinksOrStable()
+    {
+        var lowProd = new System.Collections.Generic.Dictionary<string, double>(System.StringComparer.Ordinal);
+        var highProd = new System.Collections.Generic.Dictionary<string, double>(System.StringComparer.Ordinal);
+        foreach (var t in LevantTribesPreset.Build().All)
+        {
+            lowProd[t.Id] = 0.15;
+            highProd[t.Id] = 0.85;
+        }
+
+        var low = new GameState("low", LevantTribesPreset.Build(), lowProd);
+        var high = new GameState("high", LevantTribesPreset.Build(), highProd);
+        for (var i = 0; i < 80; i++) { low.AdvanceYear(); high.AdvanceYear(); }
+
+        // After many years, high-productivity tribes should be markedly larger.
+        var lowTotal = 0;
+        var highTotal = 0;
+        foreach (var (_, p) in low.Pops) lowTotal += p;
+        foreach (var (_, p) in high.Pops) highTotal += p;
+
+        Assert.True(highTotal > lowTotal * 2,
+            $"High-prod total ({highTotal}) should be ≥ 2× low-prod ({lowTotal})");
+    }
+
+    [Fact]
+    public void PopFloor_HoldsAtFiveSouls()
+    {
+        // Tiny productivity — pops should crash but not below floor.
+        var zeroProd = new System.Collections.Generic.Dictionary<string, double>(System.StringComparer.Ordinal);
+        foreach (var t in LevantTribesPreset.Build().All) zeroProd[t.Id] = 0.01;
+
+        var state = new GameState("crash", LevantTribesPreset.Build(), zeroProd);
+        for (var i = 0; i < 200; i++) state.AdvanceYear();
+
+        foreach (var (_, p) in state.Pops)
+        {
+            Assert.True(p >= EpochsOfHumanity.Sim.Pops.PopulationSystem.FloorPop);
+        }
     }
 }
 

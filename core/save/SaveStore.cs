@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using EpochsOfHumanity.Sim.Characters;
 using EpochsOfHumanity.Sim.State;
 
@@ -18,18 +19,29 @@ public static class SaveStore
             Seed: state.Seed,
             StartYearBP: state.StartYearBP,
             SeasonsElapsed: state.SeasonsElapsed,
-            Chiefs: new System.Collections.Generic.Dictionary<string, Chief>(state.Chiefs, System.StringComparer.Ordinal),
-            Events: new System.Collections.Generic.List<NarrativeEvent>(state.AllEvents));
+            Chiefs: new Dictionary<string, Chief>(state.Chiefs, System.StringComparer.Ordinal),
+            Pops: new Dictionary<string, int>(state.Pops, System.StringComparer.Ordinal),
+            Events: new List<NarrativeEvent>(state.AllEvents));
     }
 
-    public static GameState FromSnapshot(GameSaveState snapshot, TribeRegistry initialTribes)
+    /// <summary>
+    /// Restore a GameState from snapshot. <paramref name="tribeProductivity"/> is
+    /// re-derived by the caller from the current biome registry (not saved — fresh
+    /// data takes precedence per <c>game-state</c> skill §"Что НЕ хранить в сейве").
+    /// </summary>
+    public static GameState FromSnapshot(
+        GameSaveState snapshot,
+        TribeRegistry initialTribes,
+        IReadOnlyDictionary<string, double> tribeProductivity)
     {
         return new GameState(
             seed: snapshot.Seed,
             initialTribes: initialTribes,
+            tribeProductivity: tribeProductivity,
             startYearBP: snapshot.StartYearBP,
             seasonsElapsed: snapshot.SeasonsElapsed,
             chiefs: snapshot.Chiefs,
+            pops: snapshot.Pops,
             events: snapshot.Events);
     }
 }

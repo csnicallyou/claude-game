@@ -85,6 +85,7 @@ public partial class MapScreen : Node2D
     private TribeRegistry? _tribes;
     private PaletteRegistry? _palette;
     private HexLayout _layout = HexLayout.Default;
+    private Dictionary<string, double>? _tribeProductivity;
 
     private GameState? _state;
     private GameSpeed _speed = GameSpeed.Paused;
@@ -160,9 +161,33 @@ public partial class MapScreen : Node2D
         _landmarks?.Initialize(_layout);
 
         _tribes = LevantTribesPreset.Build();
-        _state = new GameState(seed: "levant-2026-default", initialTribes: _tribes);
+        _tribeProductivity = ComputeTribeProductivity(_tribes, _map, biomeRegistry);
+        _state = new GameState(
+            seed: "levant-2026-default",
+            initialTribes: _tribes,
+            tribeProductivity: _tribeProductivity);
 
         RenderTribes();
+    }
+
+    private static Dictionary<string, double> ComputeTribeProductivity(
+        TribeRegistry tribes,
+        HexMap map,
+        BiomeRegistry biomes)
+    {
+        var d = new Dictionary<string, double>(System.StringComparer.Ordinal);
+        foreach (var tribe in tribes.All)
+        {
+            if (map.TryGet(tribe.HomeHex, out var tile))
+            {
+                d[tribe.Id] = biomes.Get(tile.BiomeId).Productivity;
+            }
+            else
+            {
+                d[tribe.Id] = 0.5;
+            }
+        }
+        return d;
     }
 
     private static List<Biome> LoadBiomes()
@@ -215,7 +240,18 @@ public partial class MapScreen : Node2D
                 Position = new GodotVector2(pos.X, pos.Y),
             };
             _tribesLayer.AddChild(marker);
-            marker.Configure(tribe.Name, tribe.Species, tribe.IsPlayerControlled, _palette);
+            marker.Configure(tribe.Name, tribe.Species, tribe.IsPlayerControlled,
+                _state.PopOf(tribe.Id), _palette);
+        }
+    }
+
+    private void UpdateTribeMarkerPops()
+    {
+        if (_tribesLayer == null || _tribes == null || _state == null) return;
+        foreach (var tribe in _tribes.All)
+        {
+            var marker = _tribesLayer.GetNodeOrNull<SettlementMarker>($"Tribe_{tribe.Id}");
+            marker?.UpdatePop(_state.PopOf(tribe.Id));
         }
     }
 
@@ -270,6 +306,7 @@ public partial class MapScreen : Node2D
         }
 
         ApplySeasonalPalette();
+        UpdateTribeMarkerPops();
         RefreshHud();
         UpdateSelectedHexStatus();
     }
@@ -306,7 +343,8 @@ public partial class MapScreen : Node2D
             var player = _tribes.Player;
             var chief = _state.ChiefOf(player.Id);
             var sex = chief.Sex == Sex.Male ? "♂" : "♀";
-            _tribeLabel.Text = $"{player.Name} · chief {chief.Name} {sex} {chief.AgeWinters} winters";
+            var pop = _state.PopOf(player.Id);
+            _tribeLabel.Text = $"{player.Name} · ~{pop} souls · chief {chief.Name} {sex} {chief.AgeWinters} winters";
         }
 
         if (_statusLabel != null && _map != null)
@@ -343,7 +381,7 @@ public partial class MapScreen : Node2D
 
     private void OnLoadPressed()
     {
-        if (_tribes == null) return;
+        if (_tribes == null || _tribeProductivity == null) return;
         try
         {
             if (!FileAccess.FileExists(QuickSaveFile))
@@ -355,10 +393,11 @@ public partial class MapScreen : Node2D
             if (file == null) throw new System.IO.IOException("Cannot open save file for reading");
             var bytes = file.GetBuffer((long)file.GetLength());
             var snapshot = SaveSerializer.Deserialize(bytes);
-            _state = SaveStore.FromSnapshot(snapshot, _tribes);
+            _state = SaveStore.FromSnapshot(snapshot, _tribes, _tribeProductivity);
             RenderTribes();
             SetSpeed(GameSpeed.Paused);
             ApplySeasonalPalette();
+            UpdateTribeMarkerPops();
             RefreshHud();
             UpdateSelectedHexStatus();
             ShowNotification($"Loaded — year {_state.CurrentYearBP:N0} BP, {SeasonName[_state.CurrentSeason]}.");
@@ -475,12 +514,14 @@ public partial class MapScreen : Node2D
         if (tribe != null)
         {
             var chief = _state.ChiefOf(tribe.Id);
+            var pop = _state.PopOf(tribe.Id);
             var speciesLabel = tribe.Species == Species.Sapiens ? "Sapiens"
                 : tribe.Species == Species.Neanderthal ? "Neanderthal" : "Denisovan";
             var marker = tribe.IsPlayerControlled ? " ★" : "";
             var sex = chief.Sex == Sex.Male ? "♂" : "♀";
             _statusLabel.Text =
                 $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  " +
+                $"~{pop} souls  |  " +
                 $"chief {chief.Name} {sex} {chief.AgeWinters} winters  |  " +
                 $"biome: {tile.BiomeId}  |  {_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}";
         }
