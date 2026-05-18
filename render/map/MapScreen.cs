@@ -13,15 +13,18 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace EpochsOfHumanity.Render.Map;
 
 /// <summary>
-/// Main strategic map screen — Levant region, hex tiles, pan/zoom camera.
+/// Main strategic map screen — Levant region, hex tiles, pan/zoom camera,
+/// year advancement and basic chief aging.
 /// </summary>
 /// <remarks>
-/// Render-layer entry point for v0.1. Loads biomes from data/biomes/*.json,
-/// palette from assets/palettes/paleolithic-base.json, generates the Levant map
-/// via <see cref="LevantPreset"/>, and renders it via <see cref="HexMapRenderer"/>.
+/// Render-layer entry point for v0.1. V0.2 will move year/aging behind a proper
+/// GameWorld + Command pipeline; for now the local state here is acceptable
+/// because the actual simulation systems aren't wired yet.
 /// </remarks>
 public partial class MapScreen : Node2D
 {
+    private const int StartYearBP = 45_000;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -38,14 +41,21 @@ public partial class MapScreen : Node2D
     private LandmarkLabels? _landmarks;
     private Node2D? _tribesLayer;
     private Label? _statusLabel;
+    private Label? _yearLabel;
+    private Label? _tribeLabel;
+    private Button? _nextYearButton;
     private HexMap? _map;
     private TribeRegistry? _tribes;
     private PaletteRegistry? _palette;
     private HexLayout _layout = HexLayout.Default;
 
+    /// <summary>Years elapsed since game start. Chief age = base + this.</summary>
+    private int _yearsElapsed;
+
     private bool _isPanning;
     private GodotVector2 _panStartMouse;
     private GodotVector2 _panStartCamera;
+    private HexCoord? _selectedHex;
 
     public override void _Ready()
     {
@@ -55,11 +65,16 @@ public partial class MapScreen : Node2D
         _landmarks = GetNode<LandmarkLabels>("%LandmarkLabels");
         _tribesLayer = GetNode<Node2D>("%TribesLayer");
         _statusLabel = GetNode<Label>("%StatusLabel");
+        _yearLabel = GetNode<Label>("%YearLabel");
+        _tribeLabel = GetNode<Label>("%TribeLabel");
+        _nextYearButton = GetNode<Button>("%NextYearButton");
+        _nextYearButton.Pressed += OnNextYearPressed;
 
         try
         {
             LoadAndRender();
             CenterCameraOnStartingHex();
+            RefreshHud();
         }
         catch (System.Exception ex)
         {
@@ -72,16 +87,12 @@ public partial class MapScreen : Node2D
     private void LoadAndRender()
     {
         // 1. Load palette
-        var palettePath = ProjectSettings.GlobalizePath("res://assets/palettes/paleolithic-base.json");
-        var paletteJson = FileAccess.GetFileAsString(
-            FileAccess.FileExists("res://assets/palettes/paleolithic-base.json")
-                ? "res://assets/palettes/paleolithic-base.json"
-                : palettePath);
+        var paletteJson = FileAccess.GetFileAsString("res://assets/palettes/paleolithic-base.json");
         var paletteDto = JsonSerializer.Deserialize<PaletteDto>(paletteJson, JsonOpts)
             ?? throw new System.IO.InvalidDataException("Palette JSON empty");
         _palette = new PaletteRegistry(paletteDto.Id, paletteDto.Colors);
 
-        // 2. Load biomes (all *.json in data/biomes/)
+        // 2. Load biomes
         var biomes = LoadBiomes();
         var biomeRegistry = new BiomeRegistry(biomes);
 
@@ -100,22 +111,16 @@ public partial class MapScreen : Node2D
         // 7. Tribes (player + NPC)
         _tribes = LevantTribesPreset.Build();
         RenderTribes();
-
-        // 8. Status text
-        var playerTribe = _tribes.Player;
-        if (_statusLabel != null)
-            _statusLabel.Text = $"Levant — {_map.Count} hexes  |  Your tribe: {playerTribe.Name} (Mt. Carmel)  |  {_tribes.Count - 1} neighbouring tribes  |  45,000 BP";
     }
 
-    private static System.Collections.Generic.List<Biome> LoadBiomes()
+    private static List<Biome> LoadBiomes()
     {
-        var biomes = new System.Collections.Generic.List<Biome>();
-        var dir = DirAccess.Open("res://data/biomes/");
-        if (dir == null)
-            throw new System.IO.DirectoryNotFoundException("Cannot open res://data/biomes/");
+        var biomes = new List<Biome>();
+        var dir = DirAccess.Open("res://data/biomes/")
+            ?? throw new System.IO.DirectoryNotFoundException("Cannot open res://data/biomes/");
 
         dir.ListDirBegin();
-        var files = new System.Collections.Generic.List<string>();
+        var files = new List<string>();
         while (true)
         {
             var f = dir.GetNext();
@@ -126,12 +131,11 @@ public partial class MapScreen : Node2D
         }
         dir.ListDirEnd();
 
-        files.Sort(System.StringComparer.Ordinal); // determinism (Law 1)
+        files.Sort(System.StringComparer.Ordinal);
 
         foreach (var file in files)
         {
-            var path = $"res://data/biomes/{file}";
-            var json = FileAccess.GetFileAsString(path);
+            var json = FileAccess.GetFileAsString($"res://data/biomes/{file}");
             var biome = JsonSerializer.Deserialize<Biome>(json, JsonOpts)
                 ?? throw new System.IO.InvalidDataException($"Empty biome JSON: {file}");
             biomes.Add(biome);
@@ -144,7 +148,7 @@ public partial class MapScreen : Node2D
         if (_camera == null) return;
         var startWorld = _layout.HexToPixel(LevantPreset.StartingHex);
         _camera.Position = new GodotVector2(startWorld.X, startWorld.Y);
-        _camera.Zoom = new GodotVector2(2.0f, 2.0f); // zoomed in a bit
+        _camera.Zoom = new GodotVector2(2.0f, 2.0f);
     }
 
     private void RenderTribes()
@@ -165,22 +169,49 @@ public partial class MapScreen : Node2D
         }
     }
 
+    // ---------- Year cycle ----------
+
+    private void OnNextYearPressed()
+    {
+        _yearsElapsed++;
+        RefreshHud();
+        UpdateSelectedHexStatus();
+    }
+
+    private int CurrentYearBP => StartYearBP - _yearsElapsed;
+
+    private int EffectiveAge(Chief chief) => chief.AgeWinters + _yearsElapsed;
+
+    private void RefreshHud()
+    {
+        if (_yearLabel != null)
+            _yearLabel.Text = $"{CurrentYearBP:N0} BP";
+
+        if (_tribeLabel != null && _tribes != null)
+        {
+            var player = _tribes.Player;
+            _tribeLabel.Text =
+                $"{player.Name} · chief {player.Chief.Name}, {EffectiveAge(player.Chief)} winters";
+        }
+
+        if (_statusLabel != null && _map != null && _tribes != null)
+        {
+            _statusLabel.Text =
+                $"Levant — {_map.Count} hexes  |  " +
+                $"{_tribes.Count - 1} neighbouring tribes  |  " +
+                $"year {CurrentYearBP:N0} BP  ({_yearsElapsed} winters lived)";
+        }
+    }
+
+    // ---------- Input ----------
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_camera == null || _map == null) return;
 
-        if (@event is InputEventMouseButton mb)
-        {
-            HandleMouseButton(mb);
-        }
-        else if (@event is InputEventMouseMotion mm && _isPanning)
-        {
-            HandleMousePan(mm);
-        }
-        else if (@event is InputEventKey ke && ke.Pressed && !ke.Echo)
-        {
-            HandleKeyPress(ke);
-        }
+        if (@event is InputEventMouseButton mb) HandleMouseButton(mb);
+        else if (@event is InputEventMouseMotion mm && _isPanning) HandleMousePan(mm);
+        else if (@event is InputEventKey ke && ke.Pressed && !ke.Echo) HandleKeyPress(ke);
     }
 
     private void HandleMouseButton(InputEventMouseButton mb)
@@ -210,7 +241,7 @@ public partial class MapScreen : Node2D
         }
         else if (mb.ButtonIndex == MouseButton.Left && mb.Pressed)
         {
-            OnHexClicked(mb.GlobalPosition);
+            OnHexClicked();
         }
     }
 
@@ -218,7 +249,6 @@ public partial class MapScreen : Node2D
     {
         if (_camera == null) return;
         var delta = mm.GlobalPosition - _panStartMouse;
-        // Drag-pan: cursor moves world in opposite direction relative to camera
         _camera.Position = _panStartCamera - delta / _camera.Zoom.X;
     }
 
@@ -227,6 +257,10 @@ public partial class MapScreen : Node2D
         if (ke.Keycode == Key.Escape)
         {
             GetTree().ChangeSceneToFile("res://scenes/MainMenu.tscn");
+        }
+        else if (ke.Keycode == Key.Enter || ke.Keycode == Key.KpEnter || ke.Keycode == Key.Space)
+        {
+            OnNextYearPressed();
         }
     }
 
@@ -238,38 +272,45 @@ public partial class MapScreen : Node2D
         _camera.Zoom = new GodotVector2(z, z);
     }
 
-    private void OnHexClicked(GodotVector2 screenPos)
+    private void OnHexClicked()
     {
         if (_camera == null || _map == null || _statusLabel == null) return;
 
-        // Convert screen → world via camera
         var worldPos = _camera.GetGlobalMousePosition();
-        var coord = _layout.PixelToHex(new NumericsVector2(worldPos.X, worldPos.Y));
+        _selectedHex = _layout.PixelToHex(new NumericsVector2(worldPos.X, worldPos.Y));
+        UpdateSelectedHexStatus();
+    }
 
-        if (_map.TryGet(coord, out var tile))
+    private void UpdateSelectedHexStatus()
+    {
+        if (_statusLabel == null || _map == null || _selectedHex == null) return;
+        var coord = _selectedHex.Value;
+
+        if (!_map.TryGet(coord, out var tile))
         {
-            var tribe = _tribes?.AtHex(coord);
-            if (tribe != null)
-            {
-                var speciesLabel = tribe.Species == Species.Sapiens ? "Sapiens"
-                    : tribe.Species == Species.Neanderthal ? "Neanderthal"
-                    : "Denisovan";
-                var marker = tribe.IsPlayerControlled ? " ★" : "";
-                var sex = tribe.Chief.Sex == Sex.Male ? "♂" : "♀";
-                _statusLabel.Text =
-                    $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  " +
-                    $"chief {tribe.Chief.Name} {sex} {tribe.Chief.AgeWinters} winters  |  " +
-                    $"biome: {tile.BiomeId}";
-            }
-            else
-            {
-                _statusLabel.Text = $"Hex {coord} — biome: {tile.BiomeId}";
-            }
-            GD.Print($"Clicked hex {coord}: {tile.BiomeId}, tribe={tribe?.Name ?? "none"}");
+            _statusLabel.Text = $"Hex {coord} — (outside Levant)  |  year {CurrentYearBP:N0} BP";
+            return;
+        }
+
+        var tribe = _tribes?.AtHex(coord);
+        if (tribe != null)
+        {
+            var speciesLabel = tribe.Species == Species.Sapiens ? "Sapiens"
+                : tribe.Species == Species.Neanderthal ? "Neanderthal"
+                : "Denisovan";
+            var marker = tribe.IsPlayerControlled ? " ★" : "";
+            var sex = tribe.Chief.Sex == Sex.Male ? "♂" : "♀";
+            var age = EffectiveAge(tribe.Chief);
+            _statusLabel.Text =
+                $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  " +
+                $"chief {tribe.Chief.Name} {sex} {age} winters  |  " +
+                $"biome: {tile.BiomeId}  |  year {CurrentYearBP:N0} BP";
         }
         else
         {
-            _statusLabel.Text = $"Hex {coord} — (outside Levant)";
+            _statusLabel.Text =
+                $"Hex {coord} — biome: {tile.BiomeId}  |  year {CurrentYearBP:N0} BP";
         }
+        GD.Print($"Clicked hex {coord}: {tile.BiomeId}, tribe={tribe?.Name ?? "none"}");
     }
 }
