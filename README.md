@@ -1,5 +1,8 @@
 # Epochs of Humanity / Эпохи Человечества
 
+[![CI](https://github.com/csnicallyou/claude-game/actions/workflows/ci.yml/badge.svg)](https://github.com/csnicallyou/claude-game/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > Гранд-стратегия с глубокой симуляцией. Начинается с верхнего палеолита (~45,000 лет до н.э., Левант). Эпохи добавляются модулями.
 
 **Статус:** pre-alpha, в активной разработке. v0.1 в работе.
