@@ -1,4 +1,5 @@
 using EpochsOfHumanity.Core.Save;
+using EpochsOfHumanity.Core.Time;
 using EpochsOfHumanity.Sim.Characters;
 using EpochsOfHumanity.Sim.State;
 using Xunit;
@@ -8,11 +9,66 @@ namespace EpochsOfHumanity.Tests.Sim.State;
 public class GameStateTests
 {
     [Fact]
-    public void FreshState_StartsAt45000BP_YearsElapsedZero()
+    public void FreshState_StartsAt45000BP_YearsElapsedZero_Spring()
     {
         var state = new GameState("test-seed", LevantTribesPreset.Build());
         Assert.Equal(45_000, state.CurrentYearBP);
         Assert.Equal(0, state.YearsElapsed);
+        Assert.Equal(0L, state.SeasonsElapsed);
+        Assert.Equal(Season.Spring, state.CurrentSeason);
+    }
+
+    [Fact]
+    public void AdvanceSeason_CyclesThroughFourSeasons()
+    {
+        var state = new GameState("seasons-seed", LevantTribesPreset.Build());
+
+        state.AdvanceSeason();
+        Assert.Equal(Season.Summer, state.CurrentSeason);
+        Assert.Equal(0, state.YearsElapsed);
+        Assert.Equal(45_000, state.CurrentYearBP);
+
+        state.AdvanceSeason();
+        Assert.Equal(Season.Autumn, state.CurrentSeason);
+
+        state.AdvanceSeason();
+        Assert.Equal(Season.Winter, state.CurrentSeason);
+        Assert.Equal(0, state.YearsElapsed);
+
+        // Winter → Spring of next year
+        state.AdvanceSeason();
+        Assert.Equal(Season.Spring, state.CurrentSeason);
+        Assert.Equal(1, state.YearsElapsed);
+        Assert.Equal(44_999, state.CurrentYearBP);
+    }
+
+    [Fact]
+    public void Succession_Runs_OnlyOnSpringTransition()
+    {
+        var state = new GameState("succession-spring-seed", LevantTribesPreset.Build());
+        var origChief = state.ChiefOf("sons-of-carmel");
+
+        // Three sub-year seasons should not change chief age
+        state.AdvanceSeason(); // Summer
+        Assert.Equal(origChief.AgeWinters, state.ChiefOf("sons-of-carmel").AgeWinters);
+        Assert.Empty(state.LatestEvents);
+
+        state.AdvanceSeason(); // Autumn
+        Assert.Equal(origChief.AgeWinters, state.ChiefOf("sons-of-carmel").AgeWinters);
+        Assert.Empty(state.LatestEvents);
+
+        state.AdvanceSeason(); // Winter
+        Assert.Equal(origChief.AgeWinters, state.ChiefOf("sons-of-carmel").AgeWinters);
+        Assert.Empty(state.LatestEvents);
+
+        // Spring → succession runs
+        state.AdvanceSeason();
+        var newChief = state.ChiefOf("sons-of-carmel");
+        if (newChief.Name == origChief.Name)
+        {
+            Assert.Equal(origChief.AgeWinters + 1, newChief.AgeWinters);
+        }
+        // else: heir replaced
     }
 
     [Fact]
@@ -89,18 +145,21 @@ public class GameStateTests
 public class SaveStoreTests
 {
     [Fact]
-    public void RoundTrip_PreservesState()
+    public void RoundTrip_PreservesState_AcrossSeasons()
     {
         var original = new GameState("roundtrip-seed", LevantTribesPreset.Build());
         for (var i = 0; i < 25; i++) original.AdvanceYear();
+        original.AdvanceSeason(); // also test mid-year save (Summer of year 26)
 
         var snapshot = SaveStore.ToSnapshot(original, "test-save");
         var bytes = SaveSerializer.Serialize(snapshot);
         var restored = SaveSerializer.Deserialize(bytes);
         var rebuilt = SaveStore.FromSnapshot(restored, LevantTribesPreset.Build());
 
+        Assert.Equal(original.SeasonsElapsed, rebuilt.SeasonsElapsed);
         Assert.Equal(original.YearsElapsed, rebuilt.YearsElapsed);
         Assert.Equal(original.CurrentYearBP, rebuilt.CurrentYearBP);
+        Assert.Equal(original.CurrentSeason, rebuilt.CurrentSeason);
         foreach (var (id, chief) in original.Chiefs)
         {
             var rebuiltChief = rebuilt.ChiefOf(id);

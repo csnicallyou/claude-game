@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text.Json;
 using EpochsOfHumanity.Core.Geography;
 using EpochsOfHumanity.Core.Save;
+using EpochsOfHumanity.Core.Time;
 using EpochsOfHumanity.Core.Visual;
 using EpochsOfHumanity.Sim.Biomes;
 using EpochsOfHumanity.Sim.Characters;
@@ -15,20 +16,40 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace EpochsOfHumanity.Render.Map;
 
 /// <summary>
-/// Main strategic map screen — Levant region, real-time year advancement
-/// with 4 speeds, chief succession, save/load.
+/// Main strategic map screen — Levant region, real-time season-by-season time
+/// advancement with 4 speeds, chief succession, save/load, seasonal palette shift.
 /// </summary>
 public partial class MapScreen : Node2D
 {
     private const string QuickSaveFile = "user://saves/quick.save";
 
-    /// <summary>Real seconds per game year at each speed. 1× ≈ 10s/year (CLAUDE.md §4.1).</summary>
-    private static readonly Dictionary<GameSpeed, double> SecondsPerYearBySpeed = new()
+    /// <summary>Real seconds per game season at each speed. 1× = 10s/year = 2.5s/season.</summary>
+    private static readonly Dictionary<GameSpeed, double> SecondsPerSeasonBySpeed = new()
     {
         [GameSpeed.Paused] = 0.0,
-        [GameSpeed.Normal] = 10.0,
-        [GameSpeed.Fast]   = 5.0,
-        [GameSpeed.Faster] = 2.0,
+        [GameSpeed.Normal] = 2.5,
+        [GameSpeed.Fast]   = 1.25,
+        [GameSpeed.Faster] = 0.5,
+    };
+
+    /// <summary>
+    /// Parchment paper-tint per season — subtle warm/cool palette shift.
+    /// See game-visual-style skill, §"Климатический сдвиг".
+    /// </summary>
+    private static readonly Dictionary<Season, Color> PaperTintBySeason = new()
+    {
+        [Season.Spring] = new Color(0.97f, 0.93f, 0.78f, 1f),   // fresh, slightly green-warm
+        [Season.Summer] = new Color(0.99f, 0.92f, 0.74f, 1f),   // golden, warmest
+        [Season.Autumn] = new Color(0.92f, 0.83f, 0.67f, 1f),   // rust-tinged
+        [Season.Winter] = new Color(0.91f, 0.92f, 0.88f, 1f),   // cool pale
+    };
+
+    private static readonly Dictionary<Season, string> SeasonName = new()
+    {
+        [Season.Spring] = "Spring",
+        [Season.Summer] = "Summer",
+        [Season.Autumn] = "Autumn",
+        [Season.Winter] = "Winter",
     };
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -45,6 +66,7 @@ public partial class MapScreen : Node2D
     private RiverRenderer? _riverRenderer;
     private LandmarkLabels? _landmarks;
     private Node2D? _tribesLayer;
+    private ColorRect? _parchmentOverlay;
     private Label? _statusLabel;
     private Label? _yearLabel;
     private Label? _tribeLabel;
@@ -57,7 +79,7 @@ public partial class MapScreen : Node2D
     private Panel? _notifPanel;
     private Label? _notifLabel;
     private Timer? _notifTimer;
-    private Timer? _yearTimer;
+    private Timer? _seasonTimer;
 
     private HexMap? _map;
     private TribeRegistry? _tribes;
@@ -79,6 +101,7 @@ public partial class MapScreen : Node2D
         _riverRenderer = GetNode<RiverRenderer>("%RiverRenderer");
         _landmarks = GetNode<LandmarkLabels>("%LandmarkLabels");
         _tribesLayer = GetNode<Node2D>("%TribesLayer");
+        _parchmentOverlay = GetNode<ColorRect>("OverlayLayer/ParchmentOverlay");
         _statusLabel = GetNode<Label>("%StatusLabel");
         _yearLabel = GetNode<Label>("%YearLabel");
         _tribeLabel = GetNode<Label>("%TribeLabel");
@@ -91,7 +114,7 @@ public partial class MapScreen : Node2D
         _notifPanel = GetNode<Panel>("%NotifPanel");
         _notifLabel = GetNode<Label>("%NotifLabel");
         _notifTimer = GetNode<Timer>("%NotifTimer");
-        _yearTimer = GetNode<Timer>("%YearTimer");
+        _seasonTimer = GetNode<Timer>("%YearTimer"); // kept node name for backward-compat
 
         _pauseButton.Pressed += () => SetSpeed(GameSpeed.Paused);
         _speed1Button.Pressed += () => SetSpeed(GameSpeed.Normal);
@@ -101,7 +124,7 @@ public partial class MapScreen : Node2D
         _loadButton.Pressed += OnLoadPressed;
 
         _notifTimer.Timeout += HideNotification;
-        _yearTimer.Timeout += OnYearTimerTick;
+        _seasonTimer.Timeout += OnSeasonTimerTick;
 
         _notifPanel.Visible = false;
 
@@ -110,6 +133,7 @@ public partial class MapScreen : Node2D
             LoadAndRender();
             CenterCameraOnStartingHex();
             SetSpeed(GameSpeed.Paused);
+            ApplySeasonalPalette();
             RefreshHud();
         }
         catch (System.Exception ex)
@@ -121,25 +145,20 @@ public partial class MapScreen : Node2D
 
     private void LoadAndRender()
     {
-        // Palette
         var paletteJson = FileAccess.GetFileAsString("res://assets/palettes/paleolithic-base.json");
         var paletteDto = JsonSerializer.Deserialize<PaletteDto>(paletteJson, JsonOpts)
             ?? throw new System.IO.InvalidDataException("Palette JSON empty");
         _palette = new PaletteRegistry(paletteDto.Id, paletteDto.Colors);
 
-        // Biomes
         var biomes = LoadBiomes();
         var biomeRegistry = new BiomeRegistry(biomes);
 
-        // Map
         _map = LevantPreset.Build();
         _renderer!.Initialize(_map, biomeRegistry, _palette, _layout);
 
-        // Rivers + landmarks
         _riverRenderer?.Initialize(LevantRivers.All(), _layout, _palette);
         _landmarks?.Initialize(_layout);
 
-        // Tribes
         _tribes = LevantTribesPreset.Build();
         _state = new GameState(seed: "levant-2026-default", initialTribes: _tribes);
 
@@ -205,16 +224,16 @@ public partial class MapScreen : Node2D
     private void SetSpeed(GameSpeed speed)
     {
         _speed = speed;
-        if (_yearTimer == null) return;
+        if (_seasonTimer == null) return;
 
         if (speed == GameSpeed.Paused)
         {
-            _yearTimer.Stop();
+            _seasonTimer.Stop();
         }
         else
         {
-            _yearTimer.WaitTime = SecondsPerYearBySpeed[speed];
-            _yearTimer.Start();
+            _seasonTimer.WaitTime = SecondsPerSeasonBySpeed[speed];
+            _seasonTimer.Start();
         }
 
         UpdateSpeedButtonStyles();
@@ -224,25 +243,23 @@ public partial class MapScreen : Node2D
     private void UpdateSpeedButtonStyles()
     {
         if (_pauseButton == null || _speed1Button == null || _speed2Button == null || _speed3Button == null) return;
-
-        // Highlight currently-active speed by disabling that button (gives visual "pressed" state)
         _pauseButton.Disabled  = _speed == GameSpeed.Paused;
         _speed1Button.Disabled = _speed == GameSpeed.Normal;
         _speed2Button.Disabled = _speed == GameSpeed.Fast;
         _speed3Button.Disabled = _speed == GameSpeed.Faster;
     }
 
-    private void OnYearTimerTick()
+    private void OnSeasonTimerTick()
     {
-        if (_speed != GameSpeed.Paused) StepYear();
+        if (_speed != GameSpeed.Paused) StepSeason();
     }
 
-    private void StepYear()
+    private void StepSeason()
     {
         if (_state == null) return;
-        _state.AdvanceYear();
+        _state.AdvanceSeason();
 
-        // Notify on events affecting the player's tribe
+        // Notify on events affecting the player's tribe (only on year transition will there be any)
         foreach (var ev in _state.LatestEvents)
         {
             if (ev.TribeId == "sons-of-carmel")
@@ -252,8 +269,19 @@ public partial class MapScreen : Node2D
             }
         }
 
+        ApplySeasonalPalette();
         RefreshHud();
         UpdateSelectedHexStatus();
+    }
+
+    /// <summary>Push current-season paper-tint to the parchment shader.</summary>
+    private void ApplySeasonalPalette()
+    {
+        if (_state == null || _parchmentOverlay == null) return;
+        if (_parchmentOverlay.Material is not ShaderMaterial mat) return;
+
+        var tint = PaperTintBySeason[_state.CurrentSeason];
+        mat.SetShaderParameter("paper_tint", tint);
     }
 
     private void RefreshHud()
@@ -270,7 +298,7 @@ public partial class MapScreen : Node2D
                 GameSpeed.Faster => "▶▶▶",
                 _                => "?",
             };
-            _yearLabel.Text = $"{_state.CurrentYearBP:N0} BP  {speedLabel}";
+            _yearLabel.Text = $"{_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}  {speedLabel}";
         }
 
         if (_tribeLabel != null)
@@ -286,7 +314,8 @@ public partial class MapScreen : Node2D
             _statusLabel.Text =
                 $"Levant — {_map.Count} hexes  |  " +
                 $"{_tribes.Count - 1} neighbouring tribes  |  " +
-                $"year {_state.CurrentYearBP:N0} BP  ({_state.YearsElapsed} winters lived)";
+                $"year {_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}  " +
+                $"({_state.YearsElapsed} winters lived)";
         }
     }
 
@@ -303,7 +332,7 @@ public partial class MapScreen : Node2D
             using var file = FileAccess.Open(QuickSaveFile, FileAccess.ModeFlags.Write);
             if (file == null) throw new System.IO.IOException("Cannot open save file for writing");
             file.StoreBuffer(bytes);
-            ShowNotification($"Saved at year {_state.CurrentYearBP:N0} BP.");
+            ShowNotification($"Saved at year {_state.CurrentYearBP:N0} BP, {SeasonName[_state.CurrentSeason]}.");
         }
         catch (System.Exception ex)
         {
@@ -329,9 +358,10 @@ public partial class MapScreen : Node2D
             _state = SaveStore.FromSnapshot(snapshot, _tribes);
             RenderTribes();
             SetSpeed(GameSpeed.Paused);
+            ApplySeasonalPalette();
             RefreshHud();
             UpdateSelectedHexStatus();
-            ShowNotification($"Loaded — year {_state.CurrentYearBP:N0} BP.");
+            ShowNotification($"Loaded — year {_state.CurrentYearBP:N0} BP, {SeasonName[_state.CurrentSeason]}.");
         }
         catch (System.Exception ex)
         {
@@ -400,30 +430,18 @@ public partial class MapScreen : Node2D
                 GetTree().ChangeSceneToFile("res://scenes/MainMenu.tscn");
                 break;
             case Key.Space:
-                // Toggle pause: if paused → normal speed, else pause
                 SetSpeed(_speed == GameSpeed.Paused ? GameSpeed.Normal : GameSpeed.Paused);
                 break;
-            case Key.Key1:
-                SetSpeed(GameSpeed.Normal);
-                break;
-            case Key.Key2:
-                SetSpeed(GameSpeed.Fast);
-                break;
-            case Key.Key3:
-                SetSpeed(GameSpeed.Faster);
-                break;
+            case Key.Key1: SetSpeed(GameSpeed.Normal); break;
+            case Key.Key2: SetSpeed(GameSpeed.Fast); break;
+            case Key.Key3: SetSpeed(GameSpeed.Faster); break;
             case Key.Period:
             case Key.Enter:
             case Key.KpEnter:
-                // Manual single-step (useful when paused)
-                if (_speed == GameSpeed.Paused) StepYear();
+                if (_speed == GameSpeed.Paused) StepSeason();
                 break;
-            case Key.S when ke.CtrlPressed:
-                OnSavePressed();
-                break;
-            case Key.L when ke.CtrlPressed:
-                OnLoadPressed();
-                break;
+            case Key.S when ke.CtrlPressed: OnSavePressed(); break;
+            case Key.L when ke.CtrlPressed: OnLoadPressed(); break;
         }
     }
 
@@ -449,7 +467,7 @@ public partial class MapScreen : Node2D
 
         if (!_map.TryGet(coord, out var tile))
         {
-            _statusLabel.Text = $"Hex {coord} — (outside Levant)  |  year {_state.CurrentYearBP:N0} BP";
+            _statusLabel.Text = $"Hex {coord} — (outside Levant)  |  year {_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}";
             return;
         }
 
@@ -464,12 +482,12 @@ public partial class MapScreen : Node2D
             _statusLabel.Text =
                 $"Hex {coord} — {tribe.Name} ({speciesLabel}){marker}  |  " +
                 $"chief {chief.Name} {sex} {chief.AgeWinters} winters  |  " +
-                $"biome: {tile.BiomeId}  |  year {_state.CurrentYearBP:N0} BP";
+                $"biome: {tile.BiomeId}  |  {_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}";
         }
         else
         {
             _statusLabel.Text =
-                $"Hex {coord} — biome: {tile.BiomeId}  |  year {_state.CurrentYearBP:N0} BP";
+                $"Hex {coord} — biome: {tile.BiomeId}  |  {_state.CurrentYearBP:N0} BP · {SeasonName[_state.CurrentSeason]}";
         }
     }
 }

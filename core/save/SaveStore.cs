@@ -17,7 +17,7 @@ public static class SaveStore
             SavedAtIso: System.DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
             Seed: state.Seed,
             StartYearBP: state.StartYearBP,
-            YearsElapsed: state.YearsElapsed,
+            SeasonsElapsed: state.SeasonsElapsed,
             Chiefs: new System.Collections.Generic.Dictionary<string, Chief>(state.Chiefs, System.StringComparer.Ordinal),
             Events: new System.Collections.Generic.List<NarrativeEvent>(state.AllEvents));
     }
@@ -28,7 +28,7 @@ public static class SaveStore
             seed: snapshot.Seed,
             initialTribes: initialTribes,
             startYearBP: snapshot.StartYearBP,
-            yearsElapsed: snapshot.YearsElapsed,
+            seasonsElapsed: snapshot.SeasonsElapsed,
             chiefs: snapshot.Chiefs,
             events: snapshot.Events);
     }
