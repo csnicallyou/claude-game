@@ -15,12 +15,21 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace EpochsOfHumanity.Render.Map;
 
 /// <summary>
-/// Main strategic map screen — Levant region, hex tiles, pan/zoom camera,
-/// year advancement, chief succession, save/load.
+/// Main strategic map screen — Levant region, real-time year advancement
+/// with 4 speeds, chief succession, save/load.
 /// </summary>
 public partial class MapScreen : Node2D
 {
     private const string QuickSaveFile = "user://saves/quick.save";
+
+    /// <summary>Real seconds per game year at each speed. 1× ≈ 10s/year (CLAUDE.md §4.1).</summary>
+    private static readonly Dictionary<GameSpeed, double> SecondsPerYearBySpeed = new()
+    {
+        [GameSpeed.Paused] = 0.0,
+        [GameSpeed.Normal] = 10.0,
+        [GameSpeed.Fast]   = 5.0,
+        [GameSpeed.Faster] = 2.0,
+    };
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -39,12 +48,16 @@ public partial class MapScreen : Node2D
     private Label? _statusLabel;
     private Label? _yearLabel;
     private Label? _tribeLabel;
-    private Button? _nextYearButton;
+    private Button? _pauseButton;
+    private Button? _speed1Button;
+    private Button? _speed2Button;
+    private Button? _speed3Button;
     private Button? _saveButton;
     private Button? _loadButton;
     private Panel? _notifPanel;
     private Label? _notifLabel;
     private Timer? _notifTimer;
+    private Timer? _yearTimer;
 
     private HexMap? _map;
     private TribeRegistry? _tribes;
@@ -52,6 +65,7 @@ public partial class MapScreen : Node2D
     private HexLayout _layout = HexLayout.Default;
 
     private GameState? _state;
+    private GameSpeed _speed = GameSpeed.Paused;
 
     private bool _isPanning;
     private GodotVector2 _panStartMouse;
@@ -68,17 +82,26 @@ public partial class MapScreen : Node2D
         _statusLabel = GetNode<Label>("%StatusLabel");
         _yearLabel = GetNode<Label>("%YearLabel");
         _tribeLabel = GetNode<Label>("%TribeLabel");
-        _nextYearButton = GetNode<Button>("%NextYearButton");
+        _pauseButton = GetNode<Button>("%PauseButton");
+        _speed1Button = GetNode<Button>("%Speed1Button");
+        _speed2Button = GetNode<Button>("%Speed2Button");
+        _speed3Button = GetNode<Button>("%Speed3Button");
         _saveButton = GetNode<Button>("%SaveButton");
         _loadButton = GetNode<Button>("%LoadButton");
         _notifPanel = GetNode<Panel>("%NotifPanel");
         _notifLabel = GetNode<Label>("%NotifLabel");
         _notifTimer = GetNode<Timer>("%NotifTimer");
+        _yearTimer = GetNode<Timer>("%YearTimer");
 
-        _nextYearButton.Pressed += OnNextYearPressed;
+        _pauseButton.Pressed += () => SetSpeed(GameSpeed.Paused);
+        _speed1Button.Pressed += () => SetSpeed(GameSpeed.Normal);
+        _speed2Button.Pressed += () => SetSpeed(GameSpeed.Fast);
+        _speed3Button.Pressed += () => SetSpeed(GameSpeed.Faster);
         _saveButton.Pressed += OnSavePressed;
         _loadButton.Pressed += OnLoadPressed;
+
         _notifTimer.Timeout += HideNotification;
+        _yearTimer.Timeout += OnYearTimerTick;
 
         _notifPanel.Visible = false;
 
@@ -86,6 +109,7 @@ public partial class MapScreen : Node2D
         {
             LoadAndRender();
             CenterCameraOnStartingHex();
+            SetSpeed(GameSpeed.Paused);
             RefreshHud();
         }
         catch (System.Exception ex)
@@ -172,21 +196,53 @@ public partial class MapScreen : Node2D
                 Position = new GodotVector2(pos.X, pos.Y),
             };
             _tribesLayer.AddChild(marker);
-            // Use current chief from state (not the initial one — chiefs change via succession)
-            var currentChief = _state.ChiefOf(tribe.Id);
-            // Label still shows tribe name; chief comes via click info
             marker.Configure(tribe.Name, tribe.Species, tribe.IsPlayerControlled, _palette);
         }
     }
 
-    // ---------- Year cycle ----------
+    // ---------- Speed control ----------
 
-    private void OnNextYearPressed()
+    private void SetSpeed(GameSpeed speed)
+    {
+        _speed = speed;
+        if (_yearTimer == null) return;
+
+        if (speed == GameSpeed.Paused)
+        {
+            _yearTimer.Stop();
+        }
+        else
+        {
+            _yearTimer.WaitTime = SecondsPerYearBySpeed[speed];
+            _yearTimer.Start();
+        }
+
+        UpdateSpeedButtonStyles();
+        RefreshHud();
+    }
+
+    private void UpdateSpeedButtonStyles()
+    {
+        if (_pauseButton == null || _speed1Button == null || _speed2Button == null || _speed3Button == null) return;
+
+        // Highlight currently-active speed by disabling that button (gives visual "pressed" state)
+        _pauseButton.Disabled  = _speed == GameSpeed.Paused;
+        _speed1Button.Disabled = _speed == GameSpeed.Normal;
+        _speed2Button.Disabled = _speed == GameSpeed.Fast;
+        _speed3Button.Disabled = _speed == GameSpeed.Faster;
+    }
+
+    private void OnYearTimerTick()
+    {
+        if (_speed != GameSpeed.Paused) StepYear();
+    }
+
+    private void StepYear()
     {
         if (_state == null) return;
         _state.AdvanceYear();
 
-        // Surface notifications: chief died / heir ascended in the player's tribe
+        // Notify on events affecting the player's tribe
         foreach (var ev in _state.LatestEvents)
         {
             if (ev.TribeId == "sons-of-carmel")
@@ -204,7 +260,18 @@ public partial class MapScreen : Node2D
     {
         if (_state == null || _tribes == null) return;
 
-        if (_yearLabel != null) _yearLabel.Text = $"{_state.CurrentYearBP:N0} BP";
+        if (_yearLabel != null)
+        {
+            var speedLabel = _speed switch
+            {
+                GameSpeed.Paused => "⏸",
+                GameSpeed.Normal => "▶",
+                GameSpeed.Fast   => "▶▶",
+                GameSpeed.Faster => "▶▶▶",
+                _                => "?",
+            };
+            _yearLabel.Text = $"{_state.CurrentYearBP:N0} BP  {speedLabel}";
+        }
 
         if (_tribeLabel != null)
         {
@@ -261,6 +328,7 @@ public partial class MapScreen : Node2D
             var snapshot = SaveSerializer.Deserialize(bytes);
             _state = SaveStore.FromSnapshot(snapshot, _tribes);
             RenderTribes();
+            SetSpeed(GameSpeed.Paused);
             RefreshHud();
             UpdateSelectedHexStatus();
             ShowNotification($"Loaded — year {_state.CurrentYearBP:N0} BP.");
@@ -331,10 +399,24 @@ public partial class MapScreen : Node2D
             case Key.Escape:
                 GetTree().ChangeSceneToFile("res://scenes/MainMenu.tscn");
                 break;
+            case Key.Space:
+                // Toggle pause: if paused → normal speed, else pause
+                SetSpeed(_speed == GameSpeed.Paused ? GameSpeed.Normal : GameSpeed.Paused);
+                break;
+            case Key.Key1:
+                SetSpeed(GameSpeed.Normal);
+                break;
+            case Key.Key2:
+                SetSpeed(GameSpeed.Fast);
+                break;
+            case Key.Key3:
+                SetSpeed(GameSpeed.Faster);
+                break;
+            case Key.Period:
             case Key.Enter:
             case Key.KpEnter:
-            case Key.Space:
-                OnNextYearPressed();
+                // Manual single-step (useful when paused)
+                if (_speed == GameSpeed.Paused) StepYear();
                 break;
             case Key.S when ke.CtrlPressed:
                 OnSavePressed();
@@ -390,4 +472,12 @@ public partial class MapScreen : Node2D
                 $"Hex {coord} — biome: {tile.BiomeId}  |  year {_state.CurrentYearBP:N0} BP";
         }
     }
+}
+
+public enum GameSpeed
+{
+    Paused = 0,
+    Normal = 1,
+    Fast   = 2,
+    Faster = 3,
 }

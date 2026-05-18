@@ -48,6 +48,11 @@ unique_name_in_owner = true
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 
+[node name="YearTimer" type="Timer" parent="."]
+unique_name_in_owner = true
+one_shot = false
+autostart = false
+
 [node name="OverlayLayer" type="CanvasLayer" parent="."]
 layer = 5
 
@@ -107,19 +112,19 @@ offset_right = -12.0
 offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 
 [node name="YearLabel" type="Label" parent="HUD/TopBar/HBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 0)
+custom_minimum_size = Vector2(170, 0)
 layout_mode = 2
-text = "45,000 BP"
+text = "45,000 BP  ⏸"
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 16
 
 [node name="TribeLabel" type="Label" parent="HUD/TopBar/HBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(360, 0)
+custom_minimum_size = Vector2(340, 0)
 layout_mode = 2
 text = "Sons of Carmel · chief Tefnut, 34 winters"
 vertical_alignment = 1
@@ -129,23 +134,47 @@ theme_override_font_sizes/font_size = 13
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="PauseButton" type="Button" parent="HUD/TopBar/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+tooltip_text = "Pause (Space)"
+text = "⏸"
+
+[node name="Speed1Button" type="Button" parent="HUD/TopBar/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+tooltip_text = "Normal speed (1)"
+text = "1×"
+
+[node name="Speed2Button" type="Button" parent="HUD/TopBar/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+tooltip_text = "Fast (2)"
+text = "2×"
+
+[node name="Speed3Button" type="Button" parent="HUD/TopBar/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+tooltip_text = "Faster (3)"
+text = "3×"
+
 [node name="SaveButton" type="Button" parent="HUD/TopBar/HBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(70, 0)
 layout_mode = 2
+tooltip_text = "Save (Ctrl+S)"
 text = "Save"
 
 [node name="LoadButton" type="Button" parent="HUD/TopBar/HBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(80, 0)
+custom_minimum_size = Vector2(70, 0)
 layout_mode = 2
+tooltip_text = "Load (Ctrl+L)"
 text = "Load"
-
-[node name="NextYearButton" type="Button" parent="HUD/TopBar/HBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 0)
-layout_mode = 2
-text = "Live one year ►"
 
 [node name="NotifPanel" type="Panel" parent="HUD"]
 unique_name_in_owner = true
@@ -189,7 +218,7 @@ anchor_right = 1.0
 offset_left = -300.0
 offset_top = 56.0
 offset_right = -10.0
-offset_bottom = 190.0
+offset_bottom = 210.0
 grow_horizontal = 0
 
 [node name="HelpLabel" type="Label" parent="HUD/HelpPanel"]
@@ -206,7 +235,9 @@ grow_vertical = 2
 text = "Right/Middle drag — pan
 Mouse wheel — zoom
 Left click — inspect hex
-Space/Enter — live one year
-Ctrl+S / Ctrl+L — save/load
+Space — pause / resume
+1 / 2 / 3 — speed
+Enter — step one year (paused)
+Ctrl+S / Ctrl+L — save / load
 Esc — main menu"
 theme_override_font_sizes/font_size = 12
